@@ -1,0 +1,83 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Chipmath - CNC feeds and speeds without the prayer</title>
+<style>
+:root{--tl:#28418f;--ink:#1d1d24;--mut:#5a5a66;--card:#f6f6f9;--ok:#0c7a3d;--bad:#b02020}
+*{box-sizing:border-box}body{margin:0;font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif;color:var(--ink);background:#fff}
+header{padding:28px 20px 8px;max-width:1100px;margin:0 auto}
+h1{font-size:28px;margin:0}h1 span{color:var(--tl)}
+.sub{color:var(--mut);max-width:660px;margin-top:8px;line-height:1.45}
+main{max-width:1100px;margin:24px auto;padding:0 20px;display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:16px}
+.card{background:var(--card);border-radius:14px;padding:18px}
+.card h2{margin:0 0 12px;font-size:18px}
+label{display:block;font-size:13px;color:var(--mut);margin:10px 0 4px}
+input,select{width:100%;padding:9px 10px;border:1px solid #d5d5de;border-radius:8px;font-size:15px;background:#fff}
+button{margin-top:14px;width:100%;padding:11px;border:0;border-radius:9px;background:var(--tl);color:#fff;font-size:15px;font-weight:600;cursor:pointer}
+.big{font-size:34px;font-weight:700;margin:14px 0 2px}
+.cap{font-size:13px;color:var(--mut)}
+.pill{display:inline-block;margin-top:10px;padding:4px 12px;border-radius:999px;font-size:13px;font-weight:600}
+.pill.ok{background:#e2f4e8;color:var(--ok)}.pill.bad{background:#fbe3e3;color:var(--bad)}.pill.note{background:#e8ecf8;color:#2b3f8f}
+table{width:100%;border-collapse:collapse;margin-top:12px;font-size:14px}
+td{padding:7px 0;border-bottom:1px solid #e3e3ea}td+td{text-align:right;font-weight:600}
+.err{color:var(--bad);font-size:14px;margin-top:10px;min-height:1em}
+.note{font-size:12.5px;color:var(--mut);margin-top:10px;line-height:1.4}
+</style></head><body>
+<header><h1>Chip<span>math</span></h1>
+<p class="sub">The forum says 18,000 RPM and go slow to be safe. Slow is the mistake: dust instead of chips means the tool rubs, heats and dies. Feeds and speeds are arithmetic - chipload times flutes times RPM. Run yours.</p></header>
+<main>
+<section class="card"><h2>Your cut</h2>
+<label>Material</label><select id="a_m"></select>
+<label>Tool diameter (mm)</label><input id="a_d" type="number" step="0.5" value="6">
+<label>Flutes</label><input id="a_f" type="number" step="1" value="2">
+<label>Spindle (RPM)</label><input id="a_r" type="number" step="500" value="18000">
+<label>Feed rate (mm/min)</label><input id="a_v" type="number" step="50" value="1200">
+<button id="a_go">Grade the cut</button>
+<div class="err" id="a_err"></div>
+<div class="big" id="a_big">-</div><div class="cap">chipload per tooth</div>
+<div id="a_pill"></div>
+<table id="a_rows"></table>
+<p class="note">Chipload ranges are published shop guidance at a 6mm carbide baseline, scaled with diameter - labeled; rigidity, coating and coolant move the real numbers.</p></section>
+
+<section class="card"><h2>What to dial in</h2>
+<button id="s_go">Compute the suggestion</button>
+<div class="err" id="s_err"></div>
+<div class="big" id="s_big">-</div><div class="cap">suggested feed at your RPM</div>
+<div id="s_pill"></div>
+<table id="s_rows"></table>
+<p class="note">Suggestion targets the middle of the material's chipload pocket and the middle of its surface-speed range. Start there, listen to the cut.</p></section>
+
+<section class="card"><h2>Engagement</h2>
+<label>Depth of cut (mm)</label><input id="e_doc" type="number" step="0.5" value="3">
+<label>Width of cut (mm)</label><input id="e_woc" type="number" step="0.5" value="6">
+<button id="e_go">Check the engagement</button>
+<div class="err" id="e_err"></div>
+<div class="big" id="e_big">-</div><div class="cap">radial engagement</div>
+<div id="e_pill"></div>
+<table id="e_rows"></table>
+<p class="note">A full-width slot makes every tooth cut twice the arc - that is where hobby machines cook tools. Labeled guidance.</p></section>
+</main>
+<script src="engine.js?v=1"></script>
+<script>
+const $=id=>document.getElementById(id);
+const sel=$('a_m');
+Object.entries(Chipmath.MATERIALS).forEach(([k,v])=>{const o=document.createElement('option');o.value=k;o.textContent=v.label;sel.appendChild(o);});
+const run=(eid,fn,draw)=>{const e=$(eid);try{e.textContent='';draw(fn());}catch(err){e.textContent=err.message;}};
+const row=(k,v)=>`<tr><td>${k}</td><td>${v}</td></tr>`;
+const pill=(id,cls,txt)=>{$(id).innerHTML=`<span class="pill ${cls}">${txt}</span>`;};
+function aIn(){return [sel.value,+$('a_d').value,+$('a_f').value,+$('a_r').value,+$('a_v').value];}
+function aGo(){run('a_err',()=>Chipmath.assess(...aIn()),r=>{
+  $('a_big').textContent=r.chiploadMm.toFixed(3)+' mm';
+  pill('a_pill',r.chipVerdict.startsWith('in the pocket')?'ok':(r.chiploadMm<r.chipLo?'note':'bad'),r.chipVerdict);
+  $('a_rows').innerHTML=row('pocket for this tool',r.chipLo.toFixed(3)+' - '+r.chipHi.toFixed(3)+' mm')+row('surface speed',r.surfaceMpm.toFixed(0)+' m/min')+row('surface verdict',r.speedVerdict);});}
+function sGo(){run('s_err',()=>Chipmath.assess(...aIn()),r=>{
+  $('s_big').textContent=Math.round(r.idealFeed)+' mm/min';
+  pill('s_pill','ok','targets mid-pocket '+r.midChip.toFixed(3)+' mm');
+  $('s_rows').innerHTML=row('at your RPM',(+$('a_r').value).toFixed(0)) +row('RPM range for the material',r.rpmRange[0]+' - '+r.rpmRange[1]);});}
+function eGo(){run('e_err',()=>Chipmath.engagement(+$('e_doc').value,+$('e_woc').value,+$('a_d').value),r=>{
+  $('e_big').textContent=(r.wocRatio*100).toFixed(0)+'%';
+  pill('e_pill',r.slotting?'bad':(r.wocRatio>0.5?'note':'ok'),r.verdict);
+  $('e_rows').innerHTML=row('depth vs diameter',(r.docRatio*100).toFixed(0)+'%');});}
+$('a_go').onclick=()=>{aGo();sGo();eGo();};
+$('s_go').onclick=sGo;$('e_go').onclick=eGo;
+aGo();sGo();eGo();
+</script></body></html>
